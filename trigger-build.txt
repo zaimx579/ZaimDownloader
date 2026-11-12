@@ -1,1 +1,1 @@
-Start ZAIM Downloader APK build
+Rebuild ZAIM Downloader APK after fixing java.util.Properties import.
