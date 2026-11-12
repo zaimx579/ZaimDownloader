@@ -28,6 +28,16 @@ jobs:
           unzip -q zaim-downloader-v3-github-apk.zip
           test -f zaim-downloader-v3/gradlew
           chmod +x zaim-downloader-v3/gradlew
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("zaim-downloader-v3/app/build.gradle.kts")
+          s = p.read_text()
+          old = "val props = java.util.Properties().apply { propsFile.inputStream().use { load(it) } }"
+          new = "val props = java.util.Properties()\n                propsFile.inputStream().use { props.load(it) }"
+          if old not in s:
+              raise SystemExit("Expected signing-properties line was not found")
+          p.write_text(s.replace(old, new))
+          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
