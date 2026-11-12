@@ -6,6 +6,7 @@ on:
     paths:
       - 'zaim-downloader-v3-github-apk.zip'
       - '.github/workflows/build-apk.yml'
+      - 'trigger-build.txt'
 
 permissions:
   contents: read
