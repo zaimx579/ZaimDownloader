@@ -116,8 +116,14 @@ jobs:
           new_icon = "androidx.compose.material.icons.Icons.Rounded.ArrowDownward"
           if old_icon in common_text:
               common_text = common_text.replace(old_icon, new_icon)
-          if new_icon not in common_text:
-              raise SystemExit("Compose download icon repair did not apply")
+          icon_import = "import androidx.compose.material.icons.rounded.ArrowDownward" + chr(10)
+          package_line = "package com.zaim.downloader.ui.components" + chr(10)
+          if icon_import.strip() not in common_text:
+              if package_line not in common_text:
+                  raise SystemExit("Common.kt package declaration was not found")
+              common_text = common_text.replace(package_line, package_line + chr(10) + icon_import, 1)
+          if new_icon not in common_text or icon_import.strip() not in common_text:
+              raise SystemExit("Compose ArrowDownward import repair did not apply")
           common_file.write_text(common_text, encoding="utf-8")
 
           # Confirm both Kotlin repairs before starting Gradle.
