@@ -32,12 +32,12 @@ jobs:
           from pathlib import Path
           p = Path("zaim-downloader-v3/app/build.gradle.kts")
           s = p.read_text()
-          old = "val props = java.util.Properties()"
+          old = "val props = java.util.Properties().apply { propsFile.inputStream().use { load(it) } }"
           if old not in s:
               raise SystemExit("Expected Properties declaration was not found")
-          s = s.replace(old, "val props = Properties()")
-          if not s.startswith("import java.util.Properties"):
-              s = "import java.util.Properties\\n" + s
+          s = s.replace(old, "val props = Properties().apply { propsFile.inputStream().use { load(it) } }")
+          if "import java.util.Properties" not in s:
+              s = "import java.util.Properties" + chr(10) + s
           p.write_text(s)
           PY
 
