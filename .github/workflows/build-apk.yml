@@ -76,6 +76,54 @@ jobs:
               path.write_text(text, encoding="utf-8")
               ET.parse(path)
 
+          # Fix coroutine usage: persist progress from a child coroutine scope,
+          # because DownloadEngine's progress callback itself is not suspendable.
+          repo_file = root / "app/src/main/java/com/zaim/downloader/download/DownloadRepository.kt"
+          repo_text = repo_file.read_text(encoding="utf-8")
+          flow_import = "import kotlinx.coroutines.flow.first" + chr(10)
+          if "import kotlinx.coroutines.coroutineScope" not in repo_text:
+              if flow_import not in repo_text:
+                  raise SystemExit("DownloadRepository flow import was not found")
+              repo_text = repo_text.replace(
+                  flow_import,
+                  flow_import + "import kotlinx.coroutines.coroutineScope" + chr(10) + "import kotlinx.coroutines.launch" + chr(10),
+                  1,
+              )
+          pattern = r"            engine\\.download\\(\\n(?P<body>.*?)\\n            \\)\\n\\n            val published"
+          match = re.search(pattern, repo_text, re.S)
+          if not match:
+              raise SystemExit("DownloadEngine call block was not found")
+          body = match.group("body").replace(
+              "persistProgress(id, progress)",
+              "launch { persistProgress(id, progress) }",
+          )
+          replacement = (
+              "            coroutineScope {" + chr(10)
+              + "                engine.download(" + chr(10)
+              + body + chr(10)
+              + "                )" + chr(10)
+              + "            }" + chr(10) + chr(10)
+              + "            val published"
+          )
+          repo_text = repo_text[:match.start()] + replacement + repo_text[match.end():]
+          repo_file.write_text(repo_text, encoding="utf-8")
+
+          # Replace a nonexistent Compose icon with the available FileDownload icon.
+          common_file = root / "app/src/main/java/com/zaim/downloader/ui/components/Common.kt"
+          common_text = common_file.read_text(encoding="utf-8")
+          old_icon = "androidx.compose.material.icons.Icons.Rounded.Download"
+          new_icon = "androidx.compose.material.icons.Icons.Rounded.FileDownload"
+          if old_icon in common_text:
+              common_text = common_text.replace(old_icon, new_icon)
+          if new_icon not in common_text:
+              raise SystemExit("Compose download icon repair did not apply")
+          common_file.write_text(common_text, encoding="utf-8")
+
+          # Confirm both Kotlin repairs before starting Gradle.
+          if "launch { persistProgress(id, progress) }" not in repo_text:
+              raise SystemExit("Coroutine callback repair did not apply")
+          print("Kotlin callback and Compose icon repairs validated.")
+
           # Fail early if the expected project structure or resources are missing.
           required = [
               root / "settings.gradle.kts",
