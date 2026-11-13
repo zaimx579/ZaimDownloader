@@ -109,11 +109,11 @@ jobs:
           repo_text = repo_text[:match.start()] + replacement + repo_text[match.end():]
           repo_file.write_text(repo_text, encoding="utf-8")
 
-          # Replace a nonexistent Compose icon with the available FileDownload icon.
+          # Replace unavailable download glyph with the long-supported ArrowDownward icon.
           common_file = root / "app/src/main/java/com/zaim/downloader/ui/components/Common.kt"
           common_text = common_file.read_text(encoding="utf-8")
           old_icon = "androidx.compose.material.icons.Icons.Rounded.Download"
-          new_icon = "androidx.compose.material.icons.Icons.Rounded.FileDownload"
+          new_icon = "androidx.compose.material.icons.Icons.Rounded.ArrowDownward"
           if old_icon in common_text:
               common_text = common_text.replace(old_icon, new_icon)
           if new_icon not in common_text:
