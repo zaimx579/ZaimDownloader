@@ -43,6 +43,7 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+          import re
           import xml.etree.ElementTree as ET
 
           root = Path("zaim-downloader-v3")
@@ -89,7 +90,7 @@ jobs:
                   flow_import + "import kotlinx.coroutines.coroutineScope" + chr(10) + "import kotlinx.coroutines.launch" + chr(10),
                   1,
               )
-          pattern = r"            engine\\.download\\(\\n(?P<body>.*?)\\n            \\)\\n\\n            val published"
+          pattern = r"            engine\.download\(\n(?P<body>.*?)\n            \)\n\n            val published"
           match = re.search(pattern, repo_text, re.S)
           if not match:
               raise SystemExit("DownloadEngine call block was not found")
