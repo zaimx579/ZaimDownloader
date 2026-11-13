@@ -1,0 +1,126 @@
+name: Build ZAIM Downloader APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'zaim-downloader-v3-github-apk.zip'
+      - '.github/workflows/build-apk.yml'
+      - 'trigger-build.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build signed Android release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack and repair Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s zaim-downloader-v3-github-apk.zip
+          unzip -q zaim-downloader-v3-github-apk.zip
+          PROJECT="$GITHUB_WORKSPACE/zaim-downloader-v3"
+          test -f "$PROJECT/gradlew"
+          test -f "$PROJECT/app/build.gradle.kts"
+          chmod +x "$PROJECT/gradlew"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          root = Path("zaim-downloader-v3")
+
+          # Gradle Kotlin DSL: import Properties explicitly to avoid the
+          # java package being shadowed by Gradle's Kotlin DSL receiver.
+          gradle_file = root / "app/build.gradle.kts"
+          gradle_text = gradle_file.read_text(encoding="utf-8")
+          broken = "val props = java.util.Properties().apply { propsFile.inputStream().use { load(it) } }"
+          fixed = "val props = Properties().apply { propsFile.inputStream().use { load(it) } }"
+          if broken in gradle_text:
+              gradle_text = gradle_text.replace(broken, fixed)
+          if "import java.util.Properties" not in gradle_text:
+              gradle_text = "import java.util.Properties" + chr(10) + gradle_text
+          if "val props = Properties()" not in gradle_text:
+              raise SystemExit("Gradle Properties repair did not apply")
+          gradle_file.write_text(gradle_text, encoding="utf-8")
+
+          # Android string resources require apostrophes inside text values
+          # to be escaped for AAPT2. Repair the two offending English strings.
+          resource_files = [
+              root / "app/src/main/res/values/strings.xml",
+              root / "app/src/main/res/values-ar/strings.xml",
+          ]
+          for path in resource_files:
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding="utf-8")
+              text = text.replace("app's private storage", "app\\'s private storage")
+              text = text.replace("platform's own download option", "platform\\'s own download option")
+              path.write_text(text, encoding="utf-8")
+              ET.parse(path)
+
+          # Fail early if the expected project structure or resources are missing.
+          required = [
+              root / "settings.gradle.kts",
+              root / "build.gradle.kts",
+              root / "app/src/main/AndroidManifest.xml",
+              root / "app/src/main/res/values/strings.xml",
+          ]
+          missing = [str(p) for p in required if not p.is_file()]
+          if missing:
+              raise SystemExit("Missing project files: " + ", ".join(missing))
+          print("Project structure, Gradle script and XML resources validated.")
+          PY
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: Build release APK
+        working-directory: zaim-downloader-v3
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace clean assembleRelease
+
+      - name: Verify release APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find zaim-downloader-v3/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
+          sha256sum "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZAIM-Downloader-APK
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 90
